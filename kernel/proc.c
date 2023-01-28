@@ -681,3 +681,8 @@ procdump(void)
     printf("\n");
   }
 }
+
+void print_hello(int n)
+{
+	printf("Hello from the kernel space %d\n",n);
+}

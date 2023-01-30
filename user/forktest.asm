@@ -47,7 +47,7 @@ forktest(void)
 
   print("fork test\n");
   3a:	00000517          	auipc	a0,0x0
-  3e:	41650513          	addi	a0,a0,1046 # 450 <hello+0xc>
+  3e:	41e50513          	addi	a0,a0,1054 # 458 <sysinfo+0xc>
   42:	00000097          	auipc	ra,0x0
   46:	fbe080e7          	jalr	-66(ra) # 0 <print>
 
@@ -71,7 +71,7 @@ forktest(void)
   if(n == N){
     print("fork claimed to work N times!\n");
   64:	00000517          	auipc	a0,0x0
-  68:	3fc50513          	addi	a0,a0,1020 # 460 <hello+0x1c>
+  68:	40450513          	addi	a0,a0,1028 # 468 <sysinfo+0x1c>
   6c:	00000097          	auipc	ra,0x0
   70:	f94080e7          	jalr	-108(ra) # 0 <print>
     exit(1);
@@ -113,7 +113,7 @@ forktest(void)
 
   print("fork test OK\n");
   b4:	00000517          	auipc	a0,0x0
-  b8:	3fc50513          	addi	a0,a0,1020 # 4b0 <hello+0x6c>
+  b8:	40450513          	addi	a0,a0,1028 # 4b8 <sysinfo+0x6c>
   bc:	00000097          	auipc	ra,0x0
   c0:	f44080e7          	jalr	-188(ra) # 0 <print>
 }
@@ -125,7 +125,7 @@ forktest(void)
   ce:	8082                	ret
       print("wait stopped early\n");
   d0:	00000517          	auipc	a0,0x0
-  d4:	3b050513          	addi	a0,a0,944 # 480 <hello+0x3c>
+  d4:	3b850513          	addi	a0,a0,952 # 488 <sysinfo+0x3c>
   d8:	00000097          	auipc	ra,0x0
   dc:	f28080e7          	jalr	-216(ra) # 0 <print>
       exit(1);
@@ -134,7 +134,7 @@ forktest(void)
   e6:	2c2080e7          	jalr	706(ra) # 3a4 <exit>
     print("wait got too many\n");
   ea:	00000517          	auipc	a0,0x0
-  ee:	3ae50513          	addi	a0,a0,942 # 498 <hello+0x54>
+  ee:	3b650513          	addi	a0,a0,950 # 4a0 <sysinfo+0x54>
   f2:	00000097          	auipc	ra,0x0
   f6:	f0e080e7          	jalr	-242(ra) # 0 <print>
     exit(1);
@@ -818,3 +818,13 @@ hello:
  446:	00000073          	ecall
  ret
  44a:	8082                	ret
+
+000000000000044c <sysinfo>:
+.global sysinfo
+sysinfo:
+ li a7, SYS_sysinfo
+ 44c:	48dd                	li	a7,23
+ ecall
+ 44e:	00000073          	ecall
+ ret
+ 452:	8082                	ret

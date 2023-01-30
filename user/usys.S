@@ -110,3 +110,8 @@ hello:
  li a7, SYS_hello
  ecall
  ret
+.global sysinfo
+sysinfo:
+ li a7, SYS_sysinfo
+ ecall
+ ret

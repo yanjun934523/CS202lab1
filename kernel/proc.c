@@ -11,7 +11,7 @@ struct cpu cpus[NCPU];
 struct proc proc[NPROC];
 
 struct proc *initproc;
-
+int syscallcounts=0;//lab1->init the global counts.
 int nextpid = 1;
 struct spinlock pid_lock;
 
@@ -682,7 +682,43 @@ procdump(void)
   }
 }
 
-void print_hello(int n)
+void
+print_hello(int n)
 {
 	printf("Hello from the kernel space %d\n",n);
+}
+
+
+int
+actproc(void)
+{
+	struct proc *p;
+	int num=0;
+	p=proc;
+	while(p<&proc[NPROC])
+	{
+		acquire(&p->lock);
+		if(p->state !=UNUSED){
+			num++;
+		}
+		release(&p->lock);
+		p++;
+	}
+	return num;
+}
+
+void
+outputsysinfo(int i)
+{
+	struct proc *p = myproc();
+	switch(i){
+		case 1:int n=actproc();
+		       printf("The total number of active processes is %d\n",n);
+		       break;
+		case 2:printf("The total number of system calls that has made so far since the system boot up is %d\n", syscallcounts);
+		       break;
+		case 3:printf("The number of free memory pages in the system is %d\n",p->sz/PGSIZE);
+		       break;
+		default:printf("ERROR\n");
+	}
 }

@@ -99,7 +99,15 @@ sys_hello(void)
   print_hello(n);
   return 0;
 }
-
+//lab1->sysinfo
+uint64
+sys_sysinfo(void)
+{
+	int p;
+	argint(0,&p);
+	outputsysinfo(p);
+	return 0;
+}
 
 
 

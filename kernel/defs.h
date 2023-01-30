@@ -106,7 +106,9 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-
+void		print_hello(int);
+void		outputsysinfo(int);
+int 		actproc(void);
 // swtch.S
 void            swtch(struct context*, struct context*);
 
@@ -184,6 +186,6 @@ void            plic_complete(int);
 void            virtio_disk_init(void);
 void            virtio_disk_rw(struct buf *, int);
 void            virtio_disk_intr(void);
-void		print_hello(int);
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

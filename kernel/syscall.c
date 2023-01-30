@@ -102,7 +102,8 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_hello(void);
-
+extern uint64 sys_sysinfo(void);
+extern int syscallcounts;//lab1->global var for counting system calls.
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -128,14 +129,15 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_hello]   sys_hello,
-
+[SYS_hello]   sys_hello,//lab demo hello function
+[SYS_sysinfo]  sys_sysinfo,//lab1->sysinfo
 };
 
 void
 syscall(void)
 {
   int num;
+  syscallcounts++;//lab1->system call will increase this global var syscallcounts.
   struct proc *p = myproc();
 
   num = p->trapframe->a7;

@@ -10,7 +10,7 @@ int main(int argc,char *argv[]){
 		n= atoi(argv[1]);
 	}
 	if(n==1||n==2||n==3){	
-		printf("info(%d)\n",n);
+		printf("System Info(%d)\n",n);
 	}
 	sysinfo(n);
 	exit(0);

@@ -697,11 +697,9 @@ actproc(void)
 	p=proc;
 	while(p<&proc[NPROC])
 	{
-		acquire(&p->lock);
 		if(p->state !=UNUSED){
 			num++;
 		}
-		release(&p->lock);
 		p++;
 	}
 	return num;
@@ -711,14 +709,17 @@ void
 outputsysinfo(int i)
 {
 	struct proc *p = myproc();
-	switch(i){
-		case 1:int n=actproc();
-		       printf("The total number of active processes is %d\n",n);
-		       break;
-		case 2:printf("The total number of system calls that has made so far since the system boot up is %d\n", syscallcounts);
-		       break;
-		case 3:printf("The number of free memory pages in the system is %d\n",p->sz/PGSIZE);
-		       break;
-		default:printf("ERROR\n");
+	if(i==1){
+		int n=actproc();
+		printf("The total number of active processes is %d\n",n);
+	}
+	else if(i==2){
+		printf("The total number of system calls that has made so far since the system boot up is %d\n", syscallcounts);
+	}
+	else if(i==3){
+		printf("The number of free memory pages in the system is %d\n",p->sz/PGSIZE);
+	}
+	else{
+		printf("ERROR\n");
 	}
 }

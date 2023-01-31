@@ -146,6 +146,9 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // Initialize system call counter
+  p->syscallcounter = 0;
+
   return p;
 }
 
@@ -722,4 +725,22 @@ outputsysinfo(int i)
 	else{
 		printf("ERROR\n");
 	}
+}
+void
+outputprocinfo(struct pinfo *pi)
+{
+    struct proc *p = myproc(); // current process
+    struct proc *pp = p->parent; // parent process
+    int ppid = pp->pid; // parent pid
+    printf("ppid: %d\n", ppid);
+
+    int systemcallcounter = p->syscallcounter; // current process system call counter
+    printf("system call count: %d\n", systemcallcounter);
+
+    int page_usage = (PGROUNDUP(p->sz)) / PGSIZE; // current process page usage
+    printf("page usage count: %d\n", page_usage);
+
+    pi->ppid = ppid;
+    pi->syscall_count = systemcallcounter;
+    pi->page_usage = page_usage;
 }

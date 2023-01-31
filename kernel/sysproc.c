@@ -109,5 +109,12 @@ sys_sysinfo(void)
 	return 0;
 }
 
-
+//lab1->procinfo
+uint64
+sys_procinfo(void)
+{
+    struct pinfo pi;
+    outputprocinfo(&pi);
+    return 0;
+}
 

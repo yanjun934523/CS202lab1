@@ -133,7 +133,8 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 	$U/_test1\
-	$U/_lab1test\
+	$U/_lab1test1\
+	$U/_lab1test2\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

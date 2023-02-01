@@ -2,7 +2,7 @@
 #include "kernel/stat.h"
 #include "user/user.h"
 
-
+// test for sysinfo system call
 int main(int argc,char *argv[]){
 	int n = 0;
 
@@ -12,6 +12,7 @@ int main(int argc,char *argv[]){
 	if(n==1||n==2||n==3){	
 		printf("System Info(%d)\n",n);
 	}
-	sysinfo(n);
+    sysinfo(n);
+
 	exit(0);
 }

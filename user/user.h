@@ -1,4 +1,5 @@
 struct stat;
+struct rtcdate;
 
 // system calls
 int fork(void);
@@ -9,7 +10,7 @@ int write(int, const void*, int);
 int read(int, void*, int);
 int close(int);
 int kill(int);
-int exec(const char*, char**);
+int exec(char*, char**);
 int open(const char*, int);
 int mknod(const char*, short, short);
 int unlink(const char*);
@@ -22,6 +23,11 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int hello(int);  //hello
+int info(int); //info
+int set_tickets(int); // set_tickets
+int sched_statistics(void); // sched_statistics
+
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -39,4 +45,3 @@ void free(void*);
 int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
-int hello(int);

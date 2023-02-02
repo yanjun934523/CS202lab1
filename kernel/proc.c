@@ -6,6 +6,23 @@
 #include "proc.h"
 #include "defs.h"
 
+//lottery and stride
+#define DEFAULT_TICKETS 10
+#define MAX_INT 2147483647
+
+#ifdef STRIDE
+#define STRIDE_CONST 10000
+#endif
+
+
+//random seed
+static unsigned int seed = 0;
+int rand(void){
+  seed = (seed * 1103515245U + 12345U) & 0x7fffffffU;
+  return seed;
+}
+
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -14,6 +31,7 @@ struct proc *initproc;
 
 int nextpid = 1;
 struct spinlock pid_lock;
+int countCalls = 0;   //count system calls
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -30,8 +48,7 @@ struct spinlock wait_lock;
 // Map it high in memory, followed by an invalid
 // guard page.
 void
-proc_mapstacks(pagetable_t kpgtbl)
-{
+proc_mapstacks(pagetable_t kpgtbl) {
   struct proc *p;
   
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -43,7 +60,7 @@ proc_mapstacks(pagetable_t kpgtbl)
   }
 }
 
-// initialize the proc table.
+// initialize the proc table at boot time.
 void
 procinit(void)
 {
@@ -53,7 +70,6 @@ procinit(void)
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-      p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
   }
 }
@@ -71,8 +87,7 @@ cpuid()
 // Return this CPU's cpu struct.
 // Interrupts must be disabled.
 struct cpu*
-mycpu(void)
-{
+mycpu(void) {
   int id = cpuid();
   struct cpu *c = &cpus[id];
   return c;
@@ -80,8 +95,7 @@ mycpu(void)
 
 // Return the current struct proc *, or zero if none.
 struct proc*
-myproc(void)
-{
+myproc(void) {
   push_off();
   struct cpu *c = mycpu();
   struct proc *p = c->proc;
@@ -90,8 +104,7 @@ myproc(void)
 }
 
 int
-allocpid()
-{
+allocpid() {
   int pid;
   
   acquire(&pid_lock);
@@ -124,6 +137,12 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+    // set default tickets
+  p->ntickets = DEFAULT_TICKETS;
+  #ifdef STRIDE
+  p->stride = STRIDE_CONST / p->ntickets;
+  p->pass = 0;
+  #endif
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -171,8 +190,8 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 }
 
-// Create a user page table for a given process, with no user memory,
-// but with trampoline and trapframe pages.
+// Create a user page table for a given process,
+// with no user memory, but with trampoline pages.
 pagetable_t
 proc_pagetable(struct proc *p)
 {
@@ -193,8 +212,7 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
-  // map the trapframe page just below the trampoline page, for
-  // trampoline.S.
+  // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
@@ -216,8 +234,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 }
 
 // a user program that calls exec("/init")
-// assembled from ../user/initcode.S
-// od -t xC ../user/initcode
+// od -t xC initcode
 uchar initcode[] = {
   0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
   0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
@@ -237,9 +254,9 @@ userinit(void)
   p = allocproc();
   initproc = p;
   
-  // allocate one user page and copy initcode's instructions
+  // allocate one user page and copy init's instructions
   // and data into it.
-  uvmfirst(p->pagetable, initcode, sizeof(initcode));
+  uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
   // prepare for the very first "return" from kernel to user.
@@ -259,12 +276,12 @@ userinit(void)
 int
 growproc(int n)
 {
-  uint64 sz;
+  uint sz;
   struct proc *p = myproc();
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
+    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
   } else if(n < 0){
@@ -390,7 +407,7 @@ exit(int status)
 int
 wait(uint64 addr)
 {
-  struct proc *pp;
+  struct proc *np;
   int havekids, pid;
   struct proc *p = myproc();
 
@@ -399,32 +416,32 @@ wait(uint64 addr)
   for(;;){
     // Scan through table looking for exited children.
     havekids = 0;
-    for(pp = proc; pp < &proc[NPROC]; pp++){
-      if(pp->parent == p){
+    for(np = proc; np < &proc[NPROC]; np++){
+      if(np->parent == p){
         // make sure the child isn't still in exit() or swtch().
-        acquire(&pp->lock);
+        acquire(&np->lock);
 
         havekids = 1;
-        if(pp->state == ZOMBIE){
+        if(np->state == ZOMBIE){
           // Found one.
-          pid = pp->pid;
-          if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                  sizeof(pp->xstate)) < 0) {
-            release(&pp->lock);
+          pid = np->pid;
+          if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
+                                  sizeof(np->xstate)) < 0) {
+            release(&np->lock);
             release(&wait_lock);
             return -1;
           }
-          freeproc(pp);
-          release(&pp->lock);
+          freeproc(np);
+          release(&np->lock);
           release(&wait_lock);
           return pid;
         }
-        release(&pp->lock);
+        release(&np->lock);
       }
     }
 
     // No point waiting if we don't have any children.
-    if(!havekids || killed(p)){
+    if(!havekids || p->killed){
       release(&wait_lock);
       return -1;
     }
@@ -434,6 +451,7 @@ wait(uint64 addr)
   }
 }
 
+#ifdef ORIGIN
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -446,7 +464,8 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
+ 
+  printf("using original scheduler\n"); 
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
@@ -470,6 +489,119 @@ scheduler(void)
     }
   }
 }
+#endif
+
+#ifdef LOTTERY
+// Lottery scheduler
+void
+scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  printf("using lottery scheduler\n");
+  c->proc = 0;
+  for(;;){
+    intr_on();
+
+    // total tickets
+    int total_tickets = 0;
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE) {
+        total_tickets += p->ntickets;
+      }
+      release(&p->lock);
+    }
+
+    // winner tickets
+    int winner = 1 + rand() % total_tickets;
+    int curr_tickets = 0;
+
+    // find the winner proc
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+
+      if(p->state != RUNNABLE) {
+        release(&p->lock);
+        continue;
+      }
+
+      curr_tickets += p->ntickets;
+      if (curr_tickets < winner) {
+        release(&p->lock);
+        continue;
+      }
+
+      p->state = RUNNING;
+      p->nruns ++; 
+      c->proc = p;
+      swtch(&c->context, &p->context);
+
+      c->proc = 0;
+
+      release(&p->lock);
+    }
+  }
+}
+
+#endif
+
+#ifdef STRIDE
+// Strider Scheduler
+void
+scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+
+  printf("using stride scheduler\n");
+
+  // args of the process with min pass
+  struct proc *p_min_pass;
+  int min_pass;
+
+  c->proc = 0;
+  for(;;){
+
+    intr_on();
+
+    p_min_pass = proc;
+    min_pass = MAX_INT;
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state != RUNNABLE){
+        release(&p->lock);
+        continue;
+      }
+      if(p->pass < min_pass) {
+        min_pass = p->pass;
+        p_min_pass = p;
+      }
+      release(&p->lock);
+    }
+
+    // run the process with min pass
+    p = p_min_pass;
+    if(MAX_INT - p->pass < p->stride){
+      panic("process pass will overflow in next stride\n");
+    }
+
+    acquire(&p->lock);
+    p->state = RUNNING;
+    p->pass += p->stride;
+    p->nruns ++;
+    c->proc = p;
+
+    swtch(&c->context, &p->context);
+
+    c->proc = 0;
+    release(&p->lock);      
+    
+  }
+}
+#endif
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -603,25 +735,6 @@ kill(int pid)
   return -1;
 }
 
-void
-setkilled(struct proc *p)
-{
-  acquire(&p->lock);
-  p->killed = 1;
-  release(&p->lock);
-}
-
-int
-killed(struct proc *p)
-{
-  int k;
-  
-  acquire(&p->lock);
-  k = p->killed;
-  release(&p->lock);
-  return k;
-}
-
 // Copy to either a user address, or kernel address,
 // depending on usr_dst.
 // Returns 0 on success, -1 on error.
@@ -660,7 +773,6 @@ procdump(void)
 {
   static char *states[] = {
   [UNUSED]    "unused",
-  [USED]      "used",
   [SLEEPING]  "sleep ",
   [RUNNABLE]  "runble",
   [RUNNING]   "run   ",
@@ -677,12 +789,90 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
+    
+    // original scheduler
+    #ifdef ORIGIN
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+    #endif
+    //lottery
+    #ifdef LOTTERY
+    printf("%d %s %s tickets: %d nruns: %d", p->pid, state, p->name, p->ntickets, p->nruns);
+    printf("\n");
+    #endif
+    //stride
+    #ifdef STRIDE
+    printf("%d %s %s tickets: %d stride: %d pass: %d nruns: %d", p->pid, state, p->name, p->ntickets, p->stride, p->pass, p->nruns);
+    printf("\n");
+    #endif
+
   }
 }
 
-void print_hello(int n)
+// set tickets
+void ticket_setter(int n)
 {
-	printf("Hello from the kernel space %d\n",n);
+  struct proc *p = myproc();
+  p->ntickets = n;
+  #ifdef STRIDE
+  p->stride = STRIDE_CONST / p->ntickets;
+  p->pass = p->stride;
+  #endif
+}
+
+// print time information
+void print_sched_statistics(void)
+{
+  struct proc *p;
+  printf("Ticks value of each program\n");
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if(p->pid > 2){
+      acquire(&p->lock);
+      if(p->state != UNUSED) {
+        printf("%s: %d\n", p->name, p->nruns);
+      }
+      release(&p->lock);
+    }
+  }
+}
+
+//hello printing hello msg
+void print_hello(int n){
+  printf("Hello from the kernel space %d\n", n);
+}
+
+
+//fuction1:return proccess number.
+int getNumProc(void)
+{
+  struct proc *p;
+  int count = 0;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state != UNUSED)
+        count++;
+  }
+
+ return count;
+}
+
+//function to return count
+// int countSystemCalls(){
+//   return countCalls;
+// }
+
+//info:printing info
+void
+print_info(int n)
+{	
+  struct proc *p = myproc();
+  int count;
+	switch(n){
+		case 1: count = getNumProc();
+			printf("A count of the processes in the system is :%d\n",count);
+			 break;
+		case 2:printf("2:A mount of the total number of system calls that the current process has made so far: %d\n", countCalls);break;
+		case 3:printf("3: The number of memory pages the current processing is using: %d\n",p->sz/PGSIZE);break;
+	}
+
 }

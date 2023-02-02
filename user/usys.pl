@@ -36,4 +36,10 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+# hello syscall for user
 entry("hello");
+#info syscall for user
+entry("info");
+# syscalls for user
+entry("set_tickets");
+entry("sched_statistics");

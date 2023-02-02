@@ -31,6 +31,7 @@ extern struct cpu cpus[NCPU];
 // per-process data for the trap handling code in trampoline.S.
 // sits in a page by itself just under the trampoline page in the
 // user page table. not specially mapped in the kernel page table.
+// the sscratch register points here.
 // uservec in trampoline.S saves user registers in the trapframe,
 // then initializes registers from the trapframe's
 // kernel_sp, kernel_hartid, kernel_satp, and jumps to kernel_trap.
@@ -91,6 +92,12 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
+  int ntickets;                // Number of tickets assigned by scheduler
+  int nruns;                   // Number of scheduled runs
+  #ifdef STRIDE
+  int stride;                  
+  int pass;                    
+  #endif
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

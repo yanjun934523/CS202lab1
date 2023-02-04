@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include <stddef.h> // need this to check for null ptr
 
 struct cpu cpus[NCPU];
 
@@ -17,6 +18,9 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+
+// LAB 3
+static void freethread(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
@@ -123,6 +127,8 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  p->thread_id = 0;
+  p->numChildThreads = 0;
   p->state = USED;
 
   // Allocate a trapframe page.
@@ -169,6 +175,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->thread_id = 0;
+  p->numChildThreads = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -352,11 +360,14 @@ exit(int status)
     panic("init exiting");
 
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
+  // LAB 3: Threads should NOT do this, so only do if NOT thread
+  if(p->thread_id == 0) {
+    for (int fd = 0; fd < NOFILE; fd++) {
+      if (p->ofile[fd]) {
+        struct file *f = p->ofile[fd];
+        fileclose(f);
+        p->ofile[fd] = 0;
+      }
     }
   }
 
@@ -372,7 +383,7 @@ exit(int status)
 
   // Parent might be sleeping in wait().
   wakeup(p->parent);
-  
+
   acquire(&p->lock);
 
   p->xstate = status;
@@ -414,7 +425,24 @@ wait(uint64 addr)
             release(&wait_lock);
             return -1;
           }
-          freeproc(pp);
+
+          // LAB 3
+          // If the process is a child thread
+          if(pp->thread_id > 0){
+            // Call freethread
+            freethread(pp);
+
+            // Decrease the number of child threads
+            // the parent thinks it has
+            acquire(&p->lock);
+            p->numChildThreads--;
+            release(&p->lock);
+          }
+          // If the process is a normal process
+          else{
+            freeproc(pp);
+          }
+
           release(&pp->lock);
           release(&wait_lock);
           return pid;
@@ -428,7 +456,7 @@ wait(uint64 addr)
       release(&wait_lock);
       return -1;
     }
-    
+
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
@@ -682,7 +710,138 @@ procdump(void)
   }
 }
 
-void print_hello(int n)
+/********** LAB 3  **********/
+
+// We need special alloc for threads
+// identical to allocproc
+static struct proc*
+allocproc_thread(struct proc* parent)
 {
-	printf("Hello from the kernel space %d\n",n);
+  struct proc *p;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == UNUSED) {
+      goto found;
+    } else {
+      release(&p->lock);
+    }
+  }
+  return 0;
+
+found:
+  p->pid = allocpid();
+  p->state = USED;
+
+  // Initialize even though we know that child threads
+  // will not call clone(), so it's not just null
+  p->numChildThreads = 0;
+
+  // Allocate a physical trapframe page.
+  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  // Increment the number of child threads for parent
+  acquire(&parent->lock);
+  parent->numChildThreads++;
+  release(&parent->lock);
+
+  // Set the thread ID for child
+  p->thread_id = parent->numChildThreads;
+
+  // Map the thread's trap frame to right below its parent's
+  if(mappages(parent->pagetable, TRAPFRAME - PGSIZE * p->thread_id, PGSIZE,
+              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+    release(&p->lock);
+    return 0;
+  }
+
+  // Set up new context to start executing at forkret,
+  // which returns to user space.
+  memset(&p->context, 0, sizeof(p->context));
+  p->context.ra = (uint64)forkret;
+  p->context.sp = p->kstack + PGSIZE;
+
+  return p;
 }
+
+int clone(void* stack){
+  // Sanity Check
+  // The input should not be NULL
+  if(stack == NULL){
+      return -1;
+  }
+
+  int i, pid;
+  struct proc *np;
+  struct proc *p = myproc();
+
+  // Allocate thread
+  if((np = allocproc_thread(p)) == 0){
+    return -1; // error found
+  }
+
+  // Copy over information from the parent process
+  // to child thread.
+  np->sz = p->sz;
+  np->pagetable = p->pagetable;
+  *(np->trapframe) = *(p->trapframe);
+
+  // Setting the stack pointer to the child's
+  // user stack's starting address
+  np->trapframe->sp = (uint64) stack;
+
+  // Cause clone to return 0 in the child.
+  np->trapframe->a0 = 0;
+
+  // increment reference counts on open file descriptors.
+  for(i = 0; i < NOFILE; i++)
+    if(p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  np->cwd = idup(p->cwd);
+
+  safestrcpy(np->name, p->name, sizeof(p->name));
+
+  pid = np->pid;
+
+  release(&np->lock);
+
+  acquire(&wait_lock);
+  np->parent = p;
+  release(&wait_lock);
+
+  acquire(&np->lock);
+  np->state = RUNNABLE;
+  release(&np->lock);
+
+  return pid;
+}
+
+// Free just the thread stuff
+// p->lock must be held.
+static void
+freethread(struct proc *p)
+{
+  if(p->trapframe)
+      kfree((void*)p->trapframe);
+  p->trapframe = 0;
+
+  // Need to UNMAP page table for thread to avoid panic freewalk leaf.
+  uvmunmap(p->pagetable, TRAPFRAME-PGSIZE*p->thread_id, 1, 0);
+
+  p->pagetable = 0;
+  p->sz = 0;
+  p->pid = 0;
+  p->parent = 0;
+  p->name[0] = 0;
+  p->chan = 0;
+  p->killed = 0;
+  p->xstate = 0;
+  p->state = UNUSED;
+  p->thread_id = 0;
+  p->numChildThreads = 0;
+}
+
+

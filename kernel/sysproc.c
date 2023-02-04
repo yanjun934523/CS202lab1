@@ -90,14 +90,12 @@ sys_uptime(void)
   return xticks;
 }
 
-
 uint64
-sys_hello(void)
+sys_clone(void)
 {
-  int n;
-  argint(0, &n);
-  print_hello(n);
-  return 0;
+    uint64 stack; // referenced wait above
+    argaddr(0, &stack);
+    return clone((void*)stack); // cast to pointer
 }
 
 

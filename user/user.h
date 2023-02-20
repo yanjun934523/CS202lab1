@@ -25,7 +25,7 @@ int sleep(int);
 int uptime(void);
 int hello(int);  //hello
 int info(int); //info
-int set_tickets(int); // set_tickets
+int sched_tickets(int); // sched_tickets
 int sched_statistics(void); // sched_statistics
 
 

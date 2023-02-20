@@ -117,7 +117,7 @@ sys_info(void)  //info syscall definition
 
 // set tickets
 uint64 
-sys_set_tickets(void)
+sys_sched_tickets(void)
 {
   int n;
   argint(0, &n);

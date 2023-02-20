@@ -7,7 +7,7 @@
 #include "defs.h"
 
 //lottery and stride
-#define DEFAULT_TICKETS 10
+#define DEFAULT_TICKETS 60
 #define MAX_INT 2147483647
 
 #ifdef STRIDE
@@ -451,7 +451,7 @@ wait(uint64 addr)
   }
 }
 
-#ifdef ORIGIN
+#ifdef RR
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -478,6 +478,7 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        p->nticks ++;
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -534,13 +535,14 @@ scheduler(void)
       }
 
       p->state = RUNNING;
-      p->nruns ++; 
+      p->nticks ++;
       c->proc = p;
       swtch(&c->context, &p->context);
 
       c->proc = 0;
 
       release(&p->lock);
+      break;
     }
   }
 }
@@ -583,14 +585,14 @@ scheduler(void)
 
     // run the process with min pass
     p = p_min_pass;
-    if(MAX_INT - p->pass < p->stride){
-      panic("process pass will overflow in next stride\n");
-    }
+//    if(MAX_INT - p->pass < p->stride){
+//      panic("process pass will overflow in next stride\n");
+//    }
 
     acquire(&p->lock);
     p->state = RUNNING;
     p->pass += p->stride;
-    p->nruns ++;
+    p->nticks ++;
     c->proc = p;
 
     swtch(&c->context, &p->context);
@@ -791,18 +793,18 @@ procdump(void)
       state = "???";
     
     // original scheduler
-    #ifdef ORIGIN
+    #ifdef RR
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
     #endif
     //lottery
     #ifdef LOTTERY
-    printf("%d %s %s tickets: %d nruns: %d", p->pid, state, p->name, p->ntickets, p->nruns);
+    printf("%d %s %s tickets: %d nticks: %d", p->pid, state, p->name, p->ntickets, p->nticks);
     printf("\n");
     #endif
     //stride
     #ifdef STRIDE
-    printf("%d %s %s tickets: %d stride: %d pass: %d nruns: %d", p->pid, state, p->name, p->ntickets, p->stride, p->pass, p->nruns);
+    printf("%d %s %s tickets: %d stride: %d pass: %d nticks: %d", p->pid, state, p->name, p->ntickets, p->stride, p->pass, p->nticks);
     printf("\n");
     #endif
 
@@ -829,7 +831,12 @@ void print_sched_statistics(void)
     if(p->pid > 2){
       acquire(&p->lock);
       if(p->state != UNUSED) {
-        printf("%s: %d\n", p->name, p->nruns);
+          if(p->ntickets == 60) {
+              printf("%d(%s): tickets: xxx, ticks: %d\n", p->pid, p->name, p->nticks);
+          }
+          else {
+              printf("%d(%s): tickets: %d, ticks: %d\n", p->pid, p->name, p->ntickets, p->nticks);
+          }
       }
       release(&p->lock);
     }

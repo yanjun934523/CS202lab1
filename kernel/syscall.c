@@ -107,7 +107,7 @@ extern uint64 sys_uptime(void);
 extern uint64 sys_hello(void);  //hello declaration
 extern uint64 sys_info(void); //info:declaration
 extern int countCalls; //define system call counts
-extern uint64 sys_set_tickets(void);  // set_tickets: declaration 
+extern uint64 sys_sched_tickets(void);  // sched_tickets: declaration
 extern uint64 sys_sched_statistics(void); // sched_statistics: declaration
 
 static uint64 (*syscalls[])(void) = {
@@ -134,7 +134,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_hello]   sys_hello,  //hello syscall entry
 [SYS_info]    sys_info, //info:syscall entry
-[SYS_set_tickets]       sys_set_tickets,      // set_tickets: syscall entry
+[SYS_sched_tickets]       sys_sched_tickets,      // sched_tickets: syscall entry
 [SYS_sched_statistics]  sys_sched_statistics  // sched_statistics: syscall entry
 };
 

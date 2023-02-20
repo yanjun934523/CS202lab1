@@ -93,7 +93,7 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
   int ntickets;                // Number of tickets assigned by scheduler
-  int nruns;                   // Number of scheduled runs
+  int nticks;                   // Number of scheduled runs
   #ifdef STRIDE
   int stride;                  
   int pass;                    

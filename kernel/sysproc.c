@@ -115,7 +115,7 @@ sys_info(void)  //info syscall definition
 }
 
 
-// set tickets
+// initialize tickets
 uint64 
 sys_sched_tickets(void)
 {

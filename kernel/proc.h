@@ -92,7 +92,7 @@ struct proc {
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
   int thread_id;               // Thread ID
-  int numChildThreads;         // Number child threads a process has
+  int numThreads;         // Number child threads for each process
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

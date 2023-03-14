@@ -128,7 +128,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->thread_id = 0;
-  p->numChildThreads = 0;
+  p->numThreads = 0;
   p->state = USED;
 
   // Allocate a trapframe page.
@@ -176,7 +176,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   p->thread_id = 0;
-  p->numChildThreads = 0;
+  p->numThreads = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -359,14 +359,16 @@ exit(int status)
   if(p == initproc)
     panic("init exiting");
 
-  // Close all open files.
-  // LAB 3: Threads should NOT do this, so only do if NOT thread
+  
+  // LAB 3: only for process not thread
   if(p->thread_id == 0) {
-    for (int fd = 0; fd < NOFILE; fd++) {
+    int fd = 0;
+    while(fd < NOFILE){
       if (p->ofile[fd]) {
         struct file *f = p->ofile[fd];
         fileclose(f);
         p->ofile[fd] = 0;
+        fd++;
       }
     }
   }
@@ -427,18 +429,16 @@ wait(uint64 addr)
           }
 
           // LAB 3
-          // If the process is a child thread
+          // finds out if it is a child process
           if(pp->thread_id > 0){
-            // Call freethread
             freethread(pp);
 
-            // Decrease the number of child threads
-            // the parent thinks it has
+            // Decrease the number of children threads
             acquire(&p->lock);
-            p->numChildThreads--;
+            p->numThreads--;
             release(&p->lock);
           }
-          // If the process is a normal process
+          
           else{
             freeproc(pp);
           }
@@ -451,14 +451,13 @@ wait(uint64 addr)
       }
     }
 
-    // No point waiting if we don't have any children.
     if(!havekids || killed(p)){
       release(&wait_lock);
       return -1;
     }
 
-    // Wait for a child to exit.
-    sleep(p, &wait_lock);  //DOC: wait-sleep
+    // Wait for the child
+    sleep(p, &wait_lock);  
   }
 }
 
@@ -712,8 +711,7 @@ procdump(void)
 
 /********** LAB 3  **********/
 
-// We need special alloc for threads
-// identical to allocproc
+
 static struct proc*
 allocproc_thread(struct proc* parent)
 {
@@ -732,9 +730,8 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
-  // Initialize even though we know that child threads
-  // will not call clone(), so it's not just null
-  p->numChildThreads = 0;
+  // Initialize the number child threads
+  p->numThreads = 0;
 
   // Allocate a physical trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -745,21 +742,20 @@ found:
 
   // Increment the number of child threads for parent
   acquire(&parent->lock);
-  parent->numChildThreads++;
+  parent->numThreads++;
   release(&parent->lock);
 
   // Set the thread ID for child
-  p->thread_id = parent->numChildThreads;
+  p->thread_id = parent->numThreads;
 
-  // Map the thread's trap frame to right below its parent's
+  // Map the child thread
   if(mappages(parent->pagetable, TRAPFRAME - PGSIZE * p->thread_id, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
     release(&p->lock);
     return 0;
   }
 
-  // Set up new context to start executing at forkret,
-  // which returns to user space.
+  // Set up new context 
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
@@ -768,8 +764,7 @@ found:
 }
 
 int clone(void* stack){
-  // Sanity Check
-  // The input should not be NULL
+  // input cannot be null
   if(stack == NULL){
       return -1;
   }
@@ -783,20 +778,18 @@ int clone(void* stack){
     return -1; // error found
   }
 
-  // Copy over information from the parent process
-  // to child thread.
+  // copy all the information to child 
   np->sz = p->sz;
   np->pagetable = p->pagetable;
   *(np->trapframe) = *(p->trapframe);
 
-  // Setting the stack pointer to the child's
-  // user stack's starting address
+  // stack pointer to child
   np->trapframe->sp = (uint64) stack;
 
-  // Cause clone to return 0 in the child.
+
   np->trapframe->a0 = 0;
 
-  // increment reference counts on open file descriptors.
+  // increment counter
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
@@ -819,8 +812,7 @@ int clone(void* stack){
   return pid;
 }
 
-// Free just the thread stuff
-// p->lock must be held.
+// p-lock need to be held
 static void
 freethread(struct proc *p)
 {
@@ -828,7 +820,7 @@ freethread(struct proc *p)
       kfree((void*)p->trapframe);
   p->trapframe = 0;
 
-  // Need to UNMAP page table for thread to avoid panic freewalk leaf.
+  // avoid panic freewalk leaf.
   uvmunmap(p->pagetable, TRAPFRAME-PGSIZE*p->thread_id, 1, 0);
 
   p->pagetable = 0;
@@ -841,7 +833,7 @@ freethread(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   p->thread_id = 0;
-  p->numChildThreads = 0;
+  p->numThreads = 0;
 }
 
 

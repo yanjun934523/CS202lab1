@@ -709,131 +709,153 @@ procdump(void)
   }
 }
 
-/********** LAB 3  **********/
+/********** LAB 3 implementation: Defines the per-process state **********/
 
-
+// This function allocates a new thread process struct and initializes its state.
+// It takes a pointer to the parent process as an argument.
 static struct proc*
 allocproc_thread(struct proc* parent)
 {
-  struct proc *p;
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == UNUSED) {
-      goto found;
-    } else {
-      release(&p->lock);
+    struct proc *p;
+
+    // Search for an unused process in the global process table
+    for(p = proc; p < &proc[NPROC]; p++) {
+
+        // Acquire the lock for the process
+        acquire(&p->lock);
+
+        // Check if the process is UNUSED
+        if(p->state == UNUSED) {
+            goto found;
+        } else {
+            // Release the lock for the process and continue searching
+            release(&p->lock);
+        }
     }
-  }
-  return 0;
 
-found:
-  p->pid = allocpid();
-  p->state = USED;
-
-  // Initialize the number child threads
-  p->numThreads = 0;
-
-  // Allocate a physical trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
-    freeproc(p);
-    release(&p->lock);
+    // No free process was found
     return 0;
-  }
 
-  // Increment the number of child threads for parent
-  acquire(&parent->lock);
-  parent->numThreads++;
-  release(&parent->lock);
+    found:
+    // Allocate a process ID for the new thread
+    p->pid = allocpid();
+    p->state = USED;
 
-  // Set the thread ID for child
-  p->thread_id = parent->numThreads;
+    // Initialize the number of child threads for the process to 0
+    p->numThreads = 0;
 
-  // Map the child thread
-  if(mappages(parent->pagetable, TRAPFRAME - PGSIZE * p->thread_id, PGSIZE,
-              (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
-    release(&p->lock);
-    return 0;
-  }
+    // Allocate a physical trapframe page for the thread
+    if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+        freeproc(p);
+        release(&p->lock);
+        return 0;
+    }
 
-  // Set up new context 
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
+    // Increment the number of child threads for the parent process
+    acquire(&parent->lock);
+    parent->numThreads++;
+    release(&parent->lock);
 
-  return p;
+    // Set the thread ID for the child
+    p->thread_id = parent->numThreads;
+
+    // Map the physical page for the trapframe to the child process's page table
+    if(mappages(parent->pagetable, TRAPFRAME - PGSIZE * p->thread_id, PGSIZE,
+                (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+        release(&p->lock);
+        return 0;
+    }
+
+    // Set up the new thread's context
+    memset(&p->context, 0, sizeof(p->context));
+    p->context.ra = (uint64)forkret;
+    p->context.sp = p->kstack + PGSIZE;
+
+    return p;
 }
 
+// This function creates a new thread by cloning the current process.
+// It takes a pointer to the new thread's stack as an argument.
 int clone(void* stack){
-  // input cannot be null
-  if(stack == NULL){
-      return -1;
-  }
 
-  int i, pid;
-  struct proc *np;
-  struct proc *p = myproc();
+    // Check that the stack pointer is not null
+    if(stack == NULL){
+        return -1;
+    }
 
-  // Allocate thread
-  if((np = allocproc_thread(p)) == 0){
-    return -1; // error found
-  }
+    int i, pid;
+    struct proc *np;
+    struct proc *p = myproc();
 
-  // copy all the information to child 
-  np->sz = p->sz;
-  np->pagetable = p->pagetable;
-  *(np->trapframe) = *(p->trapframe);
+    // Allocate a new process struct for the thread
+    if((np = allocproc_thread(p)) == 0){
+        return -1; // Return error if allocation failed
+    }
 
-  // stack pointer to child
-  np->trapframe->sp = (uint64) stack;
+    // Copy all necessary information from parent process to child thread
+    np->sz = p->sz;
+    np->pagetable = p->pagetable;
+    *(np->trapframe) = *(p->trapframe);
 
+    // Set the stack pointer for the child thread
+    np->trapframe->sp = (uint64) stack;
 
-  np->trapframe->a0 = 0;
+    np->trapframe->a0 = 0;
 
-  // increment counter
-  for(i = 0; i < NOFILE; i++)
-    if(p->ofile[i])
-      np->ofile[i] = filedup(p->ofile[i]);
-  np->cwd = idup(p->cwd);
+    // Duplicate all open files from parent process to child thread
+    for(i = 0; i < NOFILE; i++)
+        if(p->ofile[i])
+            np->ofile[i] = filedup(p->ofile[i]);
+    np->cwd = idup(p->cwd);
 
-  safestrcpy(np->name, p->name, sizeof(p->name));
+    // Copy the name of the parent process to the child thread
+    safestrcpy(np->name, p->name, sizeof(p->name));
 
-  pid = np->pid;
+    pid = np->pid;
 
-  release(&np->lock);
+    release(&np->lock);
 
-  acquire(&wait_lock);
-  np->parent = p;
-  release(&wait_lock);
+    // Acquire the wait_lock and set the parent of the child process
+    acquire(&wait_lock);
+    np->parent = p;
+    release(&wait_lock);
 
-  acquire(&np->lock);
-  np->state = RUNNABLE;
-  release(&np->lock);
+    // Acquire the child process's lock and set its state to RUNNABLE
+    acquire(&np->lock);
+    np->state = RUNNABLE;
+    release(&np->lock);
 
-  return pid;
+    return pid;
 }
 
-// p-lock need to be held
+// This function frees the resources associated with a thread process struct.
+// It takes a pointer to the process struct as an argument.
+// p-lock need to be held before calling this function.
 static void
 freethread(struct proc *p)
 {
-  if(p->trapframe)
-      kfree((void*)p->trapframe);
-  p->trapframe = 0;
+    // Free the trapframe page associated with the thread
+    if(p->trapframe)
+        kfree((void*)p->trapframe);
+    p->trapframe = 0;
 
-  // avoid panic freewalk leaf.
-  uvmunmap(p->pagetable, TRAPFRAME-PGSIZE*p->thread_id, 1, 0);
+    // Unmap the virtual memory pages for the trapframe in the child process
+    // to avoid a panic freewalk leaf
+    uvmunmap(p->pagetable, TRAPFRAME-PGSIZE*p->thread_id, 1, 0);
 
-  p->pagetable = 0;
-  p->sz = 0;
-  p->pid = 0;
-  p->parent = 0;
-  p->name[0] = 0;
-  p->chan = 0;
-  p->killed = 0;
-  p->xstate = 0;
-  p->state = UNUSED;
-  p->thread_id = 0;
-  p->numThreads = 0;
+    // Reset the fields of the process struct to indicate that it is unused
+    p->pagetable = 0;
+    p->sz = 0;
+    p->pid = 0;
+    p->parent = 0;
+    p->name[0] = 0;
+    p->chan = 0;
+    p->killed = 0;
+    p->xstate = 0;
+    p->state = UNUSED;
+    p->thread_id = 0;
+    p->numThreads = 0;
 }
+
 
 
